@@ -27,3 +27,4 @@ export default {
     return new Response("404", { status: 404 });
   },
 };
+``;
