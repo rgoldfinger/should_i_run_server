@@ -1,7 +1,7 @@
 name = "workers_server"
 main = "src/index.ts"
 compatibility_date = "2022-09-18"
-workers_dev = true
+# workers_dev = true
 
 routes = [
     { pattern = "https://bart2.rgoldfinger.com/*", zone_id = "6087a0bd71722c7742fcd10591e45b6e" }

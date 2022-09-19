@@ -21,9 +21,6 @@ export async function fetchDirections(
   env: Env,
   ctx: ExecutionContext
 ): Promise<Response> {
-  // if (!request.body) {
-  //     return new Response("400", {status: 400});
-  // }
   const trips: Trip[] = JSON.parse(await request.text());
   console.log({ trips });
   const directions = await Promise.all(trips.map(fetchTrip));
