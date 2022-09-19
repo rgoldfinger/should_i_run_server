@@ -102,7 +102,8 @@ export const routes = [
     name: "Richmond to Daly City/Millbrae",
     abbr: "RICH-MLBR",
     trainOriginAbbr: "RICH",
-    trainHeadAbbr: "MLBR",
+    trainHeadAbbr: "SFIA",
+    // trainHeadAbbr: "MLBR", // This is what the API says, but the ETD api uses SFIA????
     routeID: "ROUTE 7",
     number: "7",
     hexcolor: "#FF0000",
