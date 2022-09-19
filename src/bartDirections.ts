@@ -1,4 +1,5 @@
 import { Env } from "./env";
+import { routes } from "./routes";
 
 interface Trip {
   startCode: string;
@@ -13,7 +14,19 @@ async function fetchTrip(trip: Trip) {
   const responseBody: Record<string, unknown> = JSON.parse(
     rawResponse.replaceAll("@", "")
   );
-  return responseBody.root.schedule.request.trip;
+  const tripData = responseBody.root.schedule.request.trip;
+  return tripData.map((t) => {
+    return {
+      ...t,
+      fares: null,
+      leg: t.leg.map((l) => {
+        return {
+          ...l,
+          trainHeadAbbr: routes.find((r) => r.routeID == l.line)?.trainHeadAbbr,
+        };
+      }),
+    };
+  });
 }
 
 export async function fetchDirections(

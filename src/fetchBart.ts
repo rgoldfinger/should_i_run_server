@@ -87,7 +87,10 @@ async function getDeparturesForStation(station: Station): Promise<Station> {
         direction: est.direction,
         hexcolor: est.hexcolor,
         length: est.length,
-        minutes: parseInt(est.minutes, 10),
+        minutes:
+          String(est.minutes) === "Leaving"
+            ? 0
+            : parseInt(String(est.minutes), 10),
         platform: est.platform,
       })),
     };
