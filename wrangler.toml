@@ -9,5 +9,4 @@ routes = [
 
 [[kv_namespaces]]
 binding = "BART_CACHE"
-id = "your_kv_namespace_id"
-preview_id = "your_preview_kv_namespace_id"
+id = "268809e45d9d48df963ae0e982e95c12"
