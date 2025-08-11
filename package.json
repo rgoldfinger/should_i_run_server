@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250810.0",
+    "@types/node": "^24.2.1",
     "typescript": "^5.9.2",
     "wrangler": "^4.28.1"
   },
@@ -11,6 +12,9 @@
     "start": "wrangler dev",
     "deploy": "wrangler publish",
     "test": "node --test --experimental-transform-types",
-    "test:watch": "node --test --watch --experimental-transform-types"
+    "test:watch": "node --test --watch --experimental-transform-types",
+    "typecheck": "npm run typecheck:worker && npm run typecheck:tests",
+    "typecheck:worker": "tsc --noEmit --project tsconfig.json",
+    "typecheck:tests": "tsc --noEmit --project tsconfig.test.json"
   }
 }

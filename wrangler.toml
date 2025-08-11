@@ -6,3 +6,8 @@ workers_dev = true
 routes = [
     { pattern = "https://bart2.rgoldfinger.com/*", zone_id = "6087a0bd71722c7742fcd10591e45b6e" }
 ]
+
+[[kv_namespaces]]
+binding = "BART_CACHE"
+id = "your_kv_namespace_id"
+preview_id = "your_preview_kv_namespace_id"

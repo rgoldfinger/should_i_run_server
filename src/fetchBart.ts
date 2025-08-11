@@ -1,5 +1,5 @@
 import { type Env } from "./env.ts";
-import { stations } from "./stations.ts";
+import { getStations } from "./bartApi.ts";
 
 export type Location = { lat: number; lng: number };
 
@@ -29,6 +29,7 @@ export type Station = {
   entrances?: Location[];
   gtfs_latitude: number;
   gtfs_longitude: number;
+  distance?: number;
   //   closestEntranceLoc: Location;
   //   walkingDirections: WalkingDirections;
   departures?: Departure[];
@@ -40,7 +41,8 @@ export function getDistance(loc1: Location, loc2: Location): number {
   );
 }
 
-export function getClosestStations(loc: Location): Station[] {
+export async function getClosestStations(loc: Location, env: Env): Promise<Station[]> {
+  const stations = await getStations(env);
   return stations
     .map((s) => {
       return {
@@ -109,7 +111,7 @@ export async function fetchBart(
   ctx: ExecutionContext
 ): Promise<Response> {
   const location: Location = JSON.parse(await request.text());
-  const closestStations = getClosestStations(location);
+  const closestStations = await getClosestStations(location, env);
   const stationsWithDeparturetimes = await Promise.all(
     closestStations.map(getDeparturesForStation)
   );

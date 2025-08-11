@@ -13,5 +13,6 @@
       "@cloudflare/workers-types"
     ] /* Specify type package names to be included without being referenced in a source file. */,
     "resolveJsonModule": true /* Enable importing .json files */
-  }
+  },
+  "exclude": ["test"]
 }
