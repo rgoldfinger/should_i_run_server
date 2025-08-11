@@ -1,8 +1,22 @@
 import { test, describe, mock } from "node:test";
 import { strict as assert } from "node:assert";
 import worker from "../src/index.ts";
+import { testStations, testRoutes } from "./testData.ts";
 
-const mockEnv = {};
+const mockEnv = {
+  BART_CACHE: {
+    get: mock.fn((key: string) => {
+      if (key === "stations") {
+        return Promise.resolve(JSON.stringify(testStations));
+      }
+      if (key === "routes") {
+        return Promise.resolve(JSON.stringify(testRoutes));
+      }
+      return Promise.resolve(null);
+    }),
+    put: mock.fn(() => Promise.resolve()),
+  } as any
+};
 const mockCtx = {
   waitUntil: () => {},
   passThroughOnException: () => {},

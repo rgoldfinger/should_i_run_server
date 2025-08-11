@@ -1,4 +1,4 @@
-import { Env } from './env';
+import type { Env } from './env.ts';
 
 const BART_API_KEY = "MW9S-E7SL-26DU-VV8V";
 const CACHE_TTL = 24 * 60 * 60; // 24 hours in seconds

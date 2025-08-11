@@ -1,6 +1,15 @@
-import { test, describe } from 'node:test';
+import { test, describe, mock } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { getDistance, getClosestStations, type Location } from '../src/fetchBart.ts';
+import { testStations } from './testData.ts';
+
+// Mock environment for testing
+const mockEnv = {
+  BART_CACHE: {
+    get: mock.fn(() => Promise.resolve(JSON.stringify(testStations))),
+    put: mock.fn(() => Promise.resolve()),
+  } as any
+};
 
 describe('Distance Calculation & Station Filtering', () => {
   test('should calculate distance between two coordinates', () => {
@@ -18,16 +27,16 @@ describe('Distance Calculation & Station Filtering', () => {
     assert.strictEqual(distance, 0);
   });
 
-  test('should return exactly 2 closest stations', () => {
+  test('should return exactly 2 closest stations', async () => {
     const userLocation: Location = { lat: 37.8, lng: -122.27 };
-    const closest = getClosestStations(userLocation);
+    const closest = await getClosestStations(userLocation, mockEnv);
     
     assert.strictEqual(closest.length, 2);
   });
 
-  test('should return stations ordered by distance', () => {
+  test('should return stations ordered by distance', async () => {
     const userLocation: Location = { lat: 37.803768, lng: -122.27145 }; // Near 12TH station
-    const closest = getClosestStations(userLocation);
+    const closest = await getClosestStations(userLocation, mockEnv);
     
     assert.strictEqual(closest[0].abbr, '12TH');
     assert.ok(closest[0].distance < closest[1].distance);

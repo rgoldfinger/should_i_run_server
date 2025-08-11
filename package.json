@@ -1,6 +1,7 @@
 {
   "name": "workers_server",
   "version": "0.0.0",
+  "type": "module",
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250810.0",
     "@types/node": "^24.2.1",
@@ -10,7 +11,7 @@
   "private": true,
   "scripts": {
     "start": "wrangler dev",
-    "deploy": "wrangler publish",
+    "deploy": "wrangler deploy",
     "test": "node --test --experimental-transform-types",
     "test:watch": "node --test --watch --experimental-transform-types",
     "typecheck": "npm run typecheck:worker && npm run typecheck:tests",

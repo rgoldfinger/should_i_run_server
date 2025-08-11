@@ -1,14 +1,18 @@
-import { test, describe } from "node:test";
+import { test, describe, mock } from "node:test";
 import { strict as assert } from "node:assert";
 import workerHandler from "../src/index.ts";
 import type { Location } from "../src/fetchBart.ts";
 import type { Trip } from "../src/bartDirections.ts";
 import type { Env } from "../src/env.ts";
+import { testStations, testRoutes } from "./testData.ts";
 
 const LEGACY_URL = "https://bart2.rgoldfinger.com";
 
 const mockEnv: Env = {
-  BART_API_KEY: "test-key",
+  BART_CACHE: {
+    get: mock.fn(() => Promise.resolve(null)), // Always cache miss to force fresh API calls
+    put: mock.fn(() => Promise.resolve()),
+  } as any
 };
 
 const mockContext: ExecutionContext = {

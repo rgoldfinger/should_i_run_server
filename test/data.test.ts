@@ -1,11 +1,10 @@
 import { test, describe } from "node:test";
 import { strict as assert } from "node:assert";
-import { stations } from "../src/stations.ts";
-import { routes } from "../src/routes.ts";
+import { testStations, testRoutes } from "./testData.ts";
 
 describe("Data Validation", () => {
   test("should have correct Ashby station data", () => {
-    const ashbyStation = stations.find(s => s.abbr === "ASHB");
+    const ashbyStation = testStations.find(s => s.abbr === "ASHB");
     
     assert.ok(ashbyStation, "Ashby station should exist");
     assert.strictEqual(ashbyStation.name, "Ashby", "The station should have the right name");
@@ -13,7 +12,7 @@ describe("Data Validation", () => {
   });
 
   test("should have correct route 12 data", () => {
-    const route12 = routes.find(r => r.number === "12");
+    const route12 = testRoutes.find(r => r.number === "12");
     
     assert.ok(route12, "Route 12 should exist");
     assert.strictEqual(route12.name, "Daly City to Dublin/Pleasanton", "The route should have the right name");
