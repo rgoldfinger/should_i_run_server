@@ -7,9 +7,9 @@
  *
  * Learn more at https://developers.cloudflare.com/workers/
  */
-import { fetchDirections } from "./bartDirections";
-import { Env } from "./env";
-import { fetchBart } from "./fetchBart";
+import { fetchDirections } from "./bartDirections.ts";
+import { type Env } from "./env.ts";
+import { fetchBart } from "./fetchBart.ts";
 
 export default {
   async fetch(
@@ -27,4 +27,3 @@ export default {
     return new Response("404", { status: 404 });
   },
 };
-``;

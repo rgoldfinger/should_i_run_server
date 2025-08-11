@@ -1,12 +1,12 @@
-import { Env } from "./env";
-import { routes } from "./routes";
+import { type Env } from "./env.ts";
+import { routes } from "./routes.ts";
 
-interface Trip {
+export interface Trip {
   startCode: string;
   endCode: string;
 }
 
-async function fetchTrip(trip: Trip) {
+export async function fetchTrip(trip: Trip) {
   const url = `http://api.bart.gov/api/sched.aspx?cmd=depart&json=y&date=now&orig=${trip.startCode}&dest=${trip.endCode}&key="MW9S-E7SL-26DU-VV8V"`;
   const response = await fetch(url);
   const rawResponse = await response.text();

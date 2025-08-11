@@ -1,7 +1,7 @@
-import { Env } from "./env";
-import { stations } from "./stations";
+import { type Env } from "./env.ts";
+import { stations } from "./stations.ts";
 
-type Location = { lat: number; lng: number };
+export type Location = { lat: number; lng: number };
 
 export type Estimate = {
   direction: string;
@@ -34,13 +34,13 @@ export type Station = {
   departures?: Departure[];
 };
 
-function getDistance(loc1: Location, loc2: Location): number {
+export function getDistance(loc1: Location, loc2: Location): number {
   return Math.sqrt(
     Math.pow(loc1.lat - loc2.lat, 2) + Math.pow(loc1.lng - loc2.lng, 2)
   );
 }
 
-function getClosestStations(loc: Location): Station[] {
+export function getClosestStations(loc: Location): Station[] {
   return stations
     .map((s) => {
       return {
@@ -72,7 +72,9 @@ interface RawETDS {
   }>;
 }
 
-async function getDeparturesForStation(station: Station): Promise<Station> {
+export async function getDeparturesForStation(
+  station: Station
+): Promise<Station> {
   // TODO cache, current cache is 15 seconds
   const url = `http://api.bart.gov/api/etd.aspx?cmd=etd&orig=${station.abbr}&key=MW9S-E7SL-26DU-VV8V&json=y`;
   const response = await fetch(url);
