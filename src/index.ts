@@ -10,6 +10,7 @@
 import { fetchDirections } from "./bartDirections.ts";
 import { type Env } from "./env.ts";
 import { fetchBart } from "./fetchBart.ts";
+import { fetchStationNames } from "./stationNames.ts";
 
 export default {
   async fetch(
@@ -22,6 +23,10 @@ export default {
         return fetchBart(request, env, ctx);
       } else if (request.url.endsWith("/directions")) {
         return fetchDirections(request, env, ctx);
+      }
+    } else if (request.method === "GET") {
+      if (request.url.endsWith("/stations")) {
+        return fetchStationNames(request, env, ctx);
       }
     }
     return new Response("404", { status: 404 });

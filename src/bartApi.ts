@@ -216,3 +216,14 @@ export async function getRoutes(env: Env): Promise<Route[]> {
 
   return routes;
 }
+
+export async function getStationNames(env: Env): Promise<{ [k: string]: string }> {
+  const stations = await getStations(env);
+  const stationNames: { [k: string]: string } = {};
+  
+  stations.forEach(station => {
+    stationNames[station.abbr] = station.name;
+  });
+  
+  return stationNames;
+}

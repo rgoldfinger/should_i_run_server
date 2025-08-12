@@ -23,7 +23,7 @@ const mockCtx = {
 };
 
 describe("HTTP Method & Route Handling", () => {
-  test("should return 404 for unsupported HTTP methods", async () => {
+  test("should return 404 for GET on /bart", async () => {
     const request = new Request("http://localhost/bart", { method: "GET" });
     const response = await worker.fetch(
       request,
@@ -172,5 +172,30 @@ describe("POST /directions Endpoint", () => {
     } finally {
       global.fetch = originalFetch;
     }
+  });
+});
+
+describe("GET /stations Endpoint", () => {
+  test("should return station names in the correct format", async () => {
+    const request = new Request("http://localhost/stations", { method: "GET" });
+    const response = await worker.fetch(
+      request,
+      mockEnv as any,
+      mockCtx as any
+    );
+
+    assert.strictEqual(response.status, 200);
+    assert.strictEqual(
+      response.headers.get("content-type"),
+      "application/json;charset=UTF-8"
+    );
+
+    const data = await response.json();
+    assert.ok(typeof data === "object");
+    assert.strictEqual(data["12TH"], "12th St. Oakland City Center");
+    assert.strictEqual(data["16TH"], "16th St. Mission");
+    assert.strictEqual(data["19TH"], "19th St. Oakland");
+    assert.strictEqual(data["ASHB"], "Ashby");
+    assert.strictEqual(data["WCRK"], "Walnut Creek");
   });
 });
