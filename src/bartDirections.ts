@@ -11,12 +11,10 @@ export async function fetchTrip(trip: Trip, env: Env) {
   const response = await fetch(url);
   const rawResponse = await response.text();
 
-  const responseBody: any = JSON.parse(
-    rawResponse.replaceAll("@", "")
-  );
+  const responseBody: any = JSON.parse(rawResponse.replaceAll("@", ""));
   const tripData = responseBody.root.schedule.request.trip;
   const routes = await getRoutes(env);
-  
+
   return tripData.map((t: any) => {
     return {
       ...t,
@@ -37,7 +35,9 @@ export async function fetchDirections(
   ctx: ExecutionContext
 ): Promise<Response> {
   const trips: Trip[] = JSON.parse(await request.text());
-  const directions = await Promise.all(trips.map(trip => fetchTrip(trip, env)));
+  const directions = await Promise.all(
+    trips.map((trip) => fetchTrip(trip, env))
+  );
   return new Response(JSON.stringify(directions), {
     status: 200,
     headers: {

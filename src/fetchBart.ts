@@ -25,13 +25,16 @@ export type Departure = {
 export type Station = {
   abbr: string;
   name: string;
+  address?: string;
+  city?: string;
+  county?: string;
+  state?: string;
+  zipcode?: string;
   lines?: Line[];
   entrances?: Location[];
   gtfs_latitude: number;
   gtfs_longitude: number;
   distance?: number;
-  //   closestEntranceLoc: Location;
-  //   walkingDirections: WalkingDirections;
   departures?: Departure[];
 };
 
@@ -41,7 +44,10 @@ export function getDistance(loc1: Location, loc2: Location): number {
   );
 }
 
-export async function getClosestStations(loc: Location, env: Env): Promise<Station[]> {
+export async function getClosestStations(
+  loc: Location,
+  env: Env
+): Promise<Station[]> {
   const stations = await getStations(env);
   return stations
     .map((s) => {
@@ -74,10 +80,17 @@ interface RawETDS {
   }>;
 }
 
+interface BartETDResponse {
+  root: {
+    station: Array<{
+      etd: RawETDS[];
+    }>;
+  };
+}
+
 export async function getDeparturesForStation(
   station: Station
 ): Promise<Station> {
-  // TODO cache, current cache is 15 seconds
   const url = `http://api.bart.gov/api/etd.aspx?cmd=etd&orig=${station.abbr}&key=MW9S-E7SL-26DU-VV8V&json=y`;
   const response = await fetch(url);
   const responseJSON = await response.json();
