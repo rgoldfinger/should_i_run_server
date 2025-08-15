@@ -359,7 +359,7 @@ describe("Analytics Integration", () => {
     );
 
     assert.strictEqual(response.status, 200);
-    // Analytics should NOT have been called
-    assert.strictEqual(mockEnv.ANALYTICS.writeDataPoint.mock.callCount(), 0);
+    // Analytics should have been called with fallback IDs
+    assert.strictEqual(mockEnv.ANALYTICS.writeDataPoint.mock.callCount(), 1);
   });
 });

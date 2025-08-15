@@ -138,6 +138,22 @@ export function serveStatsPage(): Response {
                 <label for="requests">Total Requests</label>
             </div>
         </div>
+        
+        <h3>User Identification</h3>
+        <div class="checkbox-group">
+            <div class="checkbox-item">
+                <input type="radio" id="idBoth" name="identification" value="both" checked>
+                <label for="idBoth">Both Explicit & Fallback (Default)</label>
+            </div>
+            <div class="checkbox-item">
+                <input type="radio" id="idExplicit" name="identification" value="explicit">
+                <label for="idExplicit">Explicit IDs Only</label>
+            </div>
+            <div class="checkbox-item">
+                <input type="radio" id="idFallback" name="identification" value="fallback">
+                <label for="idFallback">Fallback IDs Only</label>
+            </div>
+        </div>
     </div>
 
     <div class="metrics-grid">
@@ -168,6 +184,7 @@ export function serveStatsPage(): Response {
     <script>
         let chart;
         let currentTimeRange = 1;
+        let currentIdentification = 'both';
 
         // Initialize chart
         function initChart() {
@@ -220,12 +237,12 @@ export function serveStatsPage(): Response {
         }
 
         // Load analytics data
-        async function loadAnalytics(days = 1) {
+        async function loadAnalytics(days = 1, identification = 'both') {
             document.getElementById('loading').style.display = 'block';
             document.getElementById('error').style.display = 'none';
             
             try {
-                const response = await fetch(\`/admin/api/analytics?days=\${days}\`);
+                const response = await fetch(\`/admin/api/analytics?days=\${days}&identification=\${identification}\`);
                 if (!response.ok) {
                     throw new Error(\`HTTP \${response.status}: \${response.statusText}\`);
                 }
@@ -261,7 +278,7 @@ export function serveStatsPage(): Response {
         // Event listeners
         document.addEventListener('DOMContentLoaded', function() {
             initChart();
-            loadAnalytics(currentTimeRange);
+            loadAnalytics(currentTimeRange, currentIdentification);
 
             // Time range buttons
             document.querySelectorAll('.time-range-btn').forEach(btn => {
@@ -269,7 +286,15 @@ export function serveStatsPage(): Response {
                     document.querySelectorAll('.time-range-btn').forEach(b => b.classList.remove('active'));
                     this.classList.add('active');
                     currentTimeRange = parseInt(this.dataset.days);
-                    loadAnalytics(currentTimeRange);
+                    loadAnalytics(currentTimeRange, currentIdentification);
+                });
+            });
+
+            // Identification method radio buttons
+            document.querySelectorAll('input[name="identification"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    currentIdentification = this.value;
+                    loadAnalytics(currentTimeRange, currentIdentification);
                 });
             });
 
@@ -299,6 +324,7 @@ export function serveStatsPage(): Response {
 export async function fetchAnalyticsData(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const days = parseInt(url.searchParams.get('days') || '1');
+  const identification = url.searchParams.get('identification') || 'both';
   
   // Check if required environment variables are set
   if (!env.CLOUDFLARE_ACCOUNT_ID || !env.CLOUDFLARE_API_TOKEN) {
@@ -312,23 +338,86 @@ export async function fetchAnalyticsData(request: Request, env: Env): Promise<Re
   }
   
   try {
+    // First, let's check if we have ANY data at all
+    const debugQuery = `SELECT COUNT(*) as total_rows FROM bart_api_analytics`;
+    console.log('Debug query - checking total rows:', debugQuery);
+    
+    const debugResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
+        'Content-Type': 'application/sql',
+      },
+      body: debugQuery
+    });
+
+    if (debugResponse.ok) {
+      const debugResult = await debugResponse.json() as { data?: any[] };
+      console.log('Total rows in dataset:', JSON.stringify(debugResult, null, 2));
+    }
+
+    // Check recent data structure using our timestamp in double1
+    const sampleQuery = `SELECT blob1, blob2, blob3, double1, _sample_interval FROM bart_api_analytics ORDER BY double1 DESC LIMIT 5`;
+    console.log('Sample query:', sampleQuery);
+    
+    const sampleResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
+        'Content-Type': 'application/sql',
+      },
+      body: sampleQuery
+    });
+
+    if (sampleResponse.ok) {
+      const sampleResult = await sampleResponse.json() as { data?: any[] };
+      console.log('Sample data structure:', JSON.stringify(sampleResult, null, 2));
+    }
+
+    // Try querying recent data from the last few hours using our timestamp
+    const recentQuery = `SELECT COUNT(*) as recent_count FROM bart_api_analytics WHERE toDateTime(double1) > NOW() - INTERVAL '6' HOUR`;
+    console.log('Recent data query:', recentQuery);
+    
+    const recentResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
+        'Content-Type': 'application/sql',
+      },
+      body: recentQuery
+    });
+
+    if (recentResponse.ok) {
+      const recentResult = await recentResponse.json() as { data?: any[] };
+      console.log('Recent data count:', JSON.stringify(recentResult, null, 2));
+    }
+
     // Determine interval based on time range
     let interval = 'HOUR';
     if (days > 7) interval = 'DAY';
     if (days > 90) interval = 'WEEK';
     
-    // Query Cloudflare Analytics Engine with time grouping
+    // Build identification filter
+    let identificationFilter = '';
+    if (identification === 'explicit') {
+      identificationFilter = ` AND blob4 = 'explicit'`;
+    } else if (identification === 'fallback') {
+      identificationFilter = ` AND blob4 = 'fallback'`;
+    }
+    // For 'both', no additional filter needed
+    
+    // Query Cloudflare Analytics Engine with time grouping using our timestamp in double1
     const query = `SELECT 
         toStartOfInterval(toDateTime(double1), INTERVAL '1' ${interval}) as period,
         COUNT(DISTINCT blob3) as unique_sessions,
         COUNT(DISTINCT blob2) as unique_users,
         SUM(_sample_interval) as requests
       FROM bart_api_analytics
-      WHERE toDateTime(double1) > NOW() - INTERVAL '${days}' DAY
+      WHERE toDateTime(double1) > NOW() - INTERVAL '${days}' DAY${identificationFilter}
       GROUP BY period
       ORDER BY period ASC`;
 
-    console.log('Executing query:', query);
+    console.log('Executing main query:', query);
     
     const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`, {
       method: 'POST',
@@ -379,7 +468,7 @@ export async function fetchAnalyticsData(request: Request, env: Env): Promise<Re
           COUNT(DISTINCT blob2) as total_users,
           SUM(_sample_interval) as total_requests
         FROM bart_api_analytics
-        WHERE toDateTime(double1) > NOW() - INTERVAL '${days}' DAY`;
+        WHERE toDateTime(double1) > NOW() - INTERVAL '${days}' DAY${identificationFilter}`;
 
       const totalResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`, {
         method: 'POST',

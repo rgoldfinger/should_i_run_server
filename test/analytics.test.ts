@@ -1,76 +1,171 @@
 import { test, describe, mock } from "node:test";
 import { strict as assert } from "node:assert";
-import { sendAnalytics, extractAnalyticsFromHeaders, type AnalyticsData } from "../src/analytics.ts";
+import { sendAnalytics } from "../src/analytics.ts";
 
 describe("Analytics Service", () => {
-  test("should extract analytics data from valid headers", () => {
-    const request = new Request("http://localhost/test", {
-      headers: {
-        "X-User-ID": "user123",
-        "X-Session-ID": "session456"
-      }
-    });
-
-    const analytics = extractAnalyticsFromHeaders(request);
-    
-    assert.strictEqual(analytics?.userId, "user123");
-    assert.strictEqual(analytics?.sessionId, "session456");
-  });
-
-  test("should return null for request without analytics headers", () => {
-    const request = new Request("http://localhost/test");
-
-    const analytics = extractAnalyticsFromHeaders(request);
-    
-    assert.strictEqual(analytics, null);
-  });
-
-  test("should return null for missing X-User-ID header", () => {
-    const request = new Request("http://localhost/test", {
-      headers: {
-        "X-Session-ID": "session456"
-      }
-    });
-
-    const analytics = extractAnalyticsFromHeaders(request);
-    
-    assert.strictEqual(analytics, null);
-  });
-
-  test("should return null for missing X-Session-ID header", () => {
-    const request = new Request("http://localhost/test", {
-      headers: {
-        "X-User-ID": "user123"
-      }
-    });
-
-    const analytics = extractAnalyticsFromHeaders(request);
-    
-    assert.strictEqual(analytics, null);
-  });
-
-  test("should send analytics data to Analytics Engine", async () => {
+  test("should send analytics data with explicit IDs to Analytics Engine", async () => {
     const mockWriteDataPoint = mock.fn();
     const mockEnv = {
       ANALYTICS: {
-        writeDataPoint: mockWriteDataPoint
-      }
+        writeDataPoint: mockWriteDataPoint,
+      },
     } as any;
 
-    const analyticsData: AnalyticsData = {
-      userId: "user123",
-      sessionId: "session456"
-    };
+    const request = new Request("https://example.com", {
+      headers: {
+        "X-User-ID": "user123",
+        "X-Session-ID": "session456",
+        "User-Agent": "Mozilla/5.0",
+        "CF-Connecting-IP": "192.168.1.1",
+      },
+    });
 
-    await sendAnalytics(mockEnv, "/bart", analyticsData);
+    sendAnalytics(mockEnv, "/bart", request);
 
     assert.strictEqual(mockWriteDataPoint.mock.callCount(), 1);
     const call = mockWriteDataPoint.mock.calls[0];
     const dataPoint = call.arguments[0];
-    
-    assert.deepStrictEqual(dataPoint.blobs, ["/bart", "user123", "session456"]);
+
+    // Should have 6 blobs: endpoint, userId, sessionId, identificationMethod, explicitUserId, fallbackUserId
+    assert.strictEqual(dataPoint.blobs.length, 6);
+    assert.strictEqual(dataPoint.blobs[0], "/bart"); // endpoint
+    assert.strictEqual(dataPoint.blobs[1], "user123"); // userId (explicit)
+    assert.strictEqual(dataPoint.blobs[2], "session456"); // sessionId (explicit)
+    assert.strictEqual(dataPoint.blobs[3], "explicit"); // identificationMethod
+    assert.strictEqual(dataPoint.blobs[4], "user123"); // explicitUserId
+    assert.ok(dataPoint.blobs[5].length === 16); // fallbackUserId (16-char hash)
+
     assert.strictEqual(dataPoint.doubles.length, 1);
     assert.ok(typeof dataPoint.doubles[0] === "number");
-    assert.deepStrictEqual(dataPoint.indexes, ["/bart"]);
+
+    // Should have 2 indexes: endpoint and identificationMethod
+    assert.deepStrictEqual(dataPoint.indexes, ["/bart", "explicit"]);
+  });
+
+  test("should send analytics data with fallback IDs when headers missing", async () => {
+    const mockWriteDataPoint = mock.fn();
+    const mockEnv = {
+      ANALYTICS: {
+        writeDataPoint: mockWriteDataPoint,
+      },
+    } as any;
+
+    const request = new Request("https://example.com", {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "CF-Connecting-IP": "192.168.1.1",
+      },
+    });
+
+    sendAnalytics(mockEnv, "/bart", request);
+
+    assert.strictEqual(mockWriteDataPoint.mock.callCount(), 1);
+    const call = mockWriteDataPoint.mock.calls[0];
+    const dataPoint = call.arguments[0];
+
+    // Should have 6 blobs
+    assert.strictEqual(dataPoint.blobs.length, 6);
+    assert.strictEqual(dataPoint.blobs[0], "/bart"); // endpoint
+    assert.ok(dataPoint.blobs[1].length === 16); // userId (fallback hash)
+    assert.ok(dataPoint.blobs[2].length === 16); // sessionId (fallback hash)
+    assert.strictEqual(dataPoint.blobs[3], "fallback"); // identificationMethod
+    assert.strictEqual(dataPoint.blobs[4], ""); // explicitUserId (empty)
+    assert.ok(dataPoint.blobs[5].length === 16); // fallbackUserId
+
+    // Should have 2 indexes
+    assert.deepStrictEqual(dataPoint.indexes, ["/bart", "fallback"]);
+  });
+
+  test("should generate consistent fallback user IDs for same IP and User-Agent", async () => {
+    const mockWriteDataPoint = mock.fn();
+    const mockEnv = {
+      ANALYTICS: {
+        writeDataPoint: mockWriteDataPoint,
+      },
+    } as any;
+
+    const headers = {
+      "User-Agent": "Mozilla/5.0",
+      "CF-Connecting-IP": "192.168.1.1",
+    };
+
+    // Make two requests with same headers
+    const request1 = new Request("https://example.com", { headers });
+    const request2 = new Request("https://example.com", { headers });
+
+    sendAnalytics(mockEnv, "/bart", request1);
+    sendAnalytics(mockEnv, "/bart", request2);
+
+    assert.strictEqual(mockWriteDataPoint.mock.callCount(), 2);
+
+    const dataPoint1 = mockWriteDataPoint.mock.calls[0].arguments[0];
+    const dataPoint2 = mockWriteDataPoint.mock.calls[1].arguments[0];
+
+    // User IDs should be the same
+    assert.strictEqual(dataPoint1.blobs[1], dataPoint2.blobs[1]);
+    // Fallback user IDs should be the same
+    assert.strictEqual(dataPoint1.blobs[5], dataPoint2.blobs[5]);
+  });
+
+  test("should generate different fallback user IDs for different IPs", async () => {
+    const mockWriteDataPoint = mock.fn();
+    const mockEnv = {
+      ANALYTICS: {
+        writeDataPoint: mockWriteDataPoint,
+      },
+    } as any;
+
+    const request1 = new Request("https://example.com", {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "CF-Connecting-IP": "192.168.1.1",
+      },
+    });
+
+    const request2 = new Request("https://example.com", {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "CF-Connecting-IP": "192.168.1.2",
+      },
+    });
+
+    sendAnalytics(mockEnv, "/bart", request1);
+    sendAnalytics(mockEnv, "/bart", request2);
+
+    assert.strictEqual(mockWriteDataPoint.mock.callCount(), 2);
+
+    const dataPoint1 = mockWriteDataPoint.mock.calls[0].arguments[0];
+    const dataPoint2 = mockWriteDataPoint.mock.calls[1].arguments[0];
+
+    // User IDs should be different
+    assert.notStrictEqual(dataPoint1.blobs[1], dataPoint2.blobs[1]);
+    // Fallback user IDs should be different
+    assert.notStrictEqual(dataPoint1.blobs[5], dataPoint2.blobs[5]);
+  });
+
+  test("should use X-Forwarded-For when CF-Connecting-IP not available", async () => {
+    const mockWriteDataPoint = mock.fn();
+    const mockEnv = {
+      ANALYTICS: {
+        writeDataPoint: mockWriteDataPoint,
+      },
+    } as any;
+
+    const request = new Request("https://example.com", {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "X-Forwarded-For": "192.168.1.1, 10.0.0.1",
+      },
+    });
+
+    sendAnalytics(mockEnv, "/bart", request);
+
+    assert.strictEqual(mockWriteDataPoint.mock.callCount(), 1);
+    const call = mockWriteDataPoint.mock.calls[0];
+    const dataPoint = call.arguments[0];
+
+    // Should use first IP from X-Forwarded-For
+    assert.strictEqual(dataPoint.blobs[3], "fallback");
+    assert.ok(dataPoint.blobs[1].length === 16); // Should generate fallback hash
   });
 });

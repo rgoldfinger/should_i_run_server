@@ -3,6 +3,7 @@
     "allow": [
       "Bash(npm run test:*)",
       "Bash(npm run typecheck:*)",
+      "WebFetch(domain:developers.cloudflare.com)",
       "WebFetch(domain:developers.cloudflare.com)"
     ],
     "deny": [],

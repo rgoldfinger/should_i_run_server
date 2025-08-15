@@ -1,6 +1,6 @@
 import { type Env } from "./env.ts";
 import { getRoutes } from "./bartApi.ts";
-import { sendAnalytics, extractAnalyticsFromHeaders } from "./analytics.ts";
+import { sendAnalytics } from "./analytics.ts";
 
 export interface Trip {
   startCode: string;
@@ -36,12 +36,9 @@ export async function fetchDirections(
   ctx: ExecutionContext
 ): Promise<Response> {
   const trips: Trip[] = JSON.parse(await request.text());
-  
-  const analytics = extractAnalyticsFromHeaders(request);
-  if (analytics) {
-    ctx.waitUntil(sendAnalytics(env, "/directions", analytics));
-  }
-  
+
+  sendAnalytics(env, "/directions", request);
+
   const directions = await Promise.all(
     trips.map((trip) => fetchTrip(trip, env))
   );
