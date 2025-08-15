@@ -142,16 +142,12 @@ export function serveStatsPage(): Response {
         <h3>User Identification</h3>
         <div class="checkbox-group">
             <div class="checkbox-item">
-                <input type="radio" id="idBoth" name="identification" value="both" checked>
-                <label for="idBoth">Both Explicit & Fallback (Default)</label>
+                <input type="radio" id="idFallback" name="identification" value="fallback" checked>
+                <label for="idFallback">All Users (Total)</label>
             </div>
             <div class="checkbox-item">
                 <input type="radio" id="idExplicit" name="identification" value="explicit">
                 <label for="idExplicit">Explicit IDs Only</label>
-            </div>
-            <div class="checkbox-item">
-                <input type="radio" id="idFallback" name="identification" value="fallback">
-                <label for="idFallback">Fallback IDs Only</label>
             </div>
         </div>
     </div>
@@ -184,7 +180,7 @@ export function serveStatsPage(): Response {
     <script>
         let chart;
         let currentTimeRange = 1;
-        let currentIdentification = 'both';
+        let currentIdentification = 'fallback';
 
         // Initialize chart
         function initChart() {
@@ -324,7 +320,7 @@ export function serveStatsPage(): Response {
 export async function fetchAnalyticsData(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const days = parseInt(url.searchParams.get('days') || '1');
-  const identification = url.searchParams.get('identification') || 'both';
+  const identification = url.searchParams.get('identification') || 'fallback';
   
   // Check if required environment variables are set
   if (!env.CLOUDFLARE_ACCOUNT_ID || !env.CLOUDFLARE_API_TOKEN) {
@@ -357,7 +353,7 @@ export async function fetchAnalyticsData(request: Request, env: Env): Promise<Re
     }
 
     // Check recent data structure using our timestamp in double1
-    const sampleQuery = `SELECT blob1, blob2, blob3, double1, _sample_interval FROM bart_api_analytics ORDER BY double1 DESC LIMIT 5`;
+    const sampleQuery = `SELECT blob1, blob2, blob3, blob4, blob5, blob6, double1, _sample_interval FROM bart_api_analytics ORDER BY double1 DESC LIMIT 5`;
     console.log('Sample query:', sampleQuery);
     
     const sampleResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`, {
@@ -397,23 +393,17 @@ export async function fetchAnalyticsData(request: Request, env: Env): Promise<Re
     if (days > 7) interval = 'DAY';
     if (days > 90) interval = 'WEEK';
     
-    // Build identification filter
-    let identificationFilter = '';
-    if (identification === 'explicit') {
-      identificationFilter = ` AND blob4 = 'explicit'`;
-    } else if (identification === 'fallback') {
-      identificationFilter = ` AND blob4 = 'fallback'`;
-    }
-    // For 'both', no additional filter needed
     
-    // Query Cloudflare Analytics Engine with time grouping using our timestamp in double1
+    // Query Cloudflare Analytics Engine with time grouping - get all metrics in one query
     const query = `SELECT 
         toStartOfInterval(toDateTime(double1), INTERVAL '1' ${interval}) as period,
-        COUNT(DISTINCT blob3) as unique_sessions,
-        COUNT(DISTINCT blob2) as unique_users,
-        SUM(_sample_interval) as requests
+        COUNT(DISTINCT blob3) as explicit_sessions,    -- explicit session IDs
+        COUNT(DISTINCT blob2) as explicit_users,       -- explicit user IDs  
+        COUNT(DISTINCT blob5) as fallback_sessions,    -- fallback session IDs
+        COUNT(DISTINCT blob6) as fallback_users,       -- fallback user IDs
+        SUM(_sample_interval) as total_requests
       FROM bart_api_analytics
-      WHERE toDateTime(double1) > NOW() - INTERVAL '${days}' DAY${identificationFilter}
+      WHERE toDateTime(double1) > NOW() - INTERVAL '${days}' DAY
       GROUP BY period
       ORDER BY period ASC`;
 
@@ -449,11 +439,24 @@ export async function fetchAnalyticsData(request: Request, env: Env): Promise<Re
     let totalRequests = 0;
 
     if (result.data && result.data.length > 0) {
-      const userSet = new Set<string>();
-      const sessionSet = new Set<string>();
-
-      result.data.forEach((row: any[]) => {
-        const [period, sessions, users, reqs] = row;
+      result.data.forEach((row: any) => {
+        const period = row.period;
+        const explicitSessions = parseInt(row.explicit_sessions);
+        const explicitUsers = parseInt(row.explicit_users);
+        const fallbackSessions = parseInt(row.fallback_sessions);
+        const fallbackUsers = parseInt(row.fallback_users);
+        const reqs = parseInt(row.total_requests);
+        
+        // Apply identification filter logic
+        let sessions, users;
+        if (identification === 'explicit') {
+          sessions = explicitSessions;
+          users = explicitUsers;
+        } else { // 'fallback' - represents total count since fallback is always generated
+          sessions = fallbackSessions; 
+          users = fallbackUsers;
+        }
+        
         timePeriods.push(new Date(period).toLocaleString());
         uniqueSessions.push(sessions);
         uniqueUsers.push(users);
@@ -462,13 +465,15 @@ export async function fetchAnalyticsData(request: Request, env: Env): Promise<Re
         totalRequests += reqs;
       });
 
-      // For totals, we need to query unique values across the entire period
+      // For totals, use the same approach - get all metrics in one query
       const totalQuery = `SELECT 
-          COUNT(DISTINCT blob3) as total_sessions,
-          COUNT(DISTINCT blob2) as total_users,
+          COUNT(DISTINCT blob3) as explicit_sessions_total,
+          COUNT(DISTINCT blob2) as explicit_users_total,
+          COUNT(DISTINCT blob5) as fallback_sessions_total,
+          COUNT(DISTINCT blob6) as fallback_users_total,
           SUM(_sample_interval) as total_requests
         FROM bart_api_analytics
-        WHERE toDateTime(double1) > NOW() - INTERVAL '${days}' DAY${identificationFilter}`;
+        WHERE toDateTime(double1) > NOW() - INTERVAL '${days}' DAY`;
 
       const totalResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`, {
         method: 'POST',
@@ -482,7 +487,22 @@ export async function fetchAnalyticsData(request: Request, env: Env): Promise<Re
       if (totalResponse.ok) {
         const totalResult = await totalResponse.json() as { data?: any[] };
         if (totalResult.data && totalResult.data.length > 0) {
-          [totalSessions, totalUsers, totalRequests] = totalResult.data[0];
+          const row = totalResult.data[0];
+          const explicitSessionsTotal = parseInt(row.explicit_sessions_total);
+          const explicitUsersTotal = parseInt(row.explicit_users_total);
+          const fallbackSessionsTotal = parseInt(row.fallback_sessions_total);
+          const fallbackUsersTotal = parseInt(row.fallback_users_total);
+          const totalReqs = parseInt(row.total_requests);
+          
+          // Apply identification filter logic to totals
+          if (identification === 'explicit') {
+            totalSessions = explicitSessionsTotal;
+            totalUsers = explicitUsersTotal;
+          } else { // 'fallback' - represents total count since fallback is always generated
+            totalSessions = fallbackSessionsTotal;
+            totalUsers = fallbackUsersTotal;
+          }
+          totalRequests = totalReqs;
         }
       }
     }

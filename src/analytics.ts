@@ -51,8 +51,7 @@ export function sendAnalytics(
       timestamp, // double1: timestamp in Unix seconds for time-based queries
     ],
     indexes: [
-      endpoint, // index1: endpoint for efficient filtering
-      identificationMethod, // index2: identification method for efficient filtering
+      endpoint, // index1: endpoint for efficient filtering (Analytics Engine max: 1 index)
     ],
   };
 

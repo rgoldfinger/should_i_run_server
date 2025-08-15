@@ -26,20 +26,20 @@ describe("Analytics Service", () => {
     const call = mockWriteDataPoint.mock.calls[0];
     const dataPoint = call.arguments[0];
 
-    // Should have 6 blobs: endpoint, userId, sessionId, identificationMethod, explicitUserId, fallbackUserId
+    // Should have 6 blobs: endpoint, explicitUserId, explicitSessionId, identificationMethod, fallbackSessionId, fallbackUserId
     assert.strictEqual(dataPoint.blobs.length, 6);
     assert.strictEqual(dataPoint.blobs[0], "/bart"); // endpoint
-    assert.strictEqual(dataPoint.blobs[1], "user123"); // userId (explicit)
-    assert.strictEqual(dataPoint.blobs[2], "session456"); // sessionId (explicit)
+    assert.strictEqual(dataPoint.blobs[1], "user123"); // explicitUserId
+    assert.strictEqual(dataPoint.blobs[2], "session456"); // explicitSessionId
     assert.strictEqual(dataPoint.blobs[3], "explicit"); // identificationMethod
-    assert.strictEqual(dataPoint.blobs[4], "user123"); // explicitUserId
+    assert.ok(dataPoint.blobs[4].length === 16); // fallbackSessionId (16-char hash)
     assert.ok(dataPoint.blobs[5].length === 16); // fallbackUserId (16-char hash)
 
     assert.strictEqual(dataPoint.doubles.length, 1);
     assert.ok(typeof dataPoint.doubles[0] === "number");
 
-    // Should have 2 indexes: endpoint and identificationMethod
-    assert.deepStrictEqual(dataPoint.indexes, ["/bart", "explicit"]);
+    // Should have 1 index: endpoint (Analytics Engine max: 1 index)
+    assert.deepStrictEqual(dataPoint.indexes, ["/bart"]);
   });
 
   test("should send analytics data with fallback IDs when headers missing", async () => {
@@ -66,14 +66,14 @@ describe("Analytics Service", () => {
     // Should have 6 blobs
     assert.strictEqual(dataPoint.blobs.length, 6);
     assert.strictEqual(dataPoint.blobs[0], "/bart"); // endpoint
-    assert.ok(dataPoint.blobs[1].length === 16); // userId (fallback hash)
-    assert.ok(dataPoint.blobs[2].length === 16); // sessionId (fallback hash)
+    assert.strictEqual(dataPoint.blobs[1], null); // explicitUserId (null when using fallback)
+    assert.strictEqual(dataPoint.blobs[2], null); // explicitSessionId (null when using fallback)
     assert.strictEqual(dataPoint.blobs[3], "fallback"); // identificationMethod
-    assert.strictEqual(dataPoint.blobs[4], ""); // explicitUserId (empty)
-    assert.ok(dataPoint.blobs[5].length === 16); // fallbackUserId
+    assert.ok(dataPoint.blobs[4].length === 16); // fallbackSessionId (16-char hash)
+    assert.ok(dataPoint.blobs[5].length === 16); // fallbackUserId (16-char hash)
 
-    // Should have 2 indexes
-    assert.deepStrictEqual(dataPoint.indexes, ["/bart", "fallback"]);
+    // Should have 1 index: endpoint
+    assert.deepStrictEqual(dataPoint.indexes, ["/bart"]);
   });
 
   test("should generate consistent fallback user IDs for same IP and User-Agent", async () => {
@@ -101,10 +101,10 @@ describe("Analytics Service", () => {
     const dataPoint1 = mockWriteDataPoint.mock.calls[0].arguments[0];
     const dataPoint2 = mockWriteDataPoint.mock.calls[1].arguments[0];
 
-    // User IDs should be the same
-    assert.strictEqual(dataPoint1.blobs[1], dataPoint2.blobs[1]);
-    // Fallback user IDs should be the same
+    // Fallback user IDs should be the same (blob5 = fallbackUserId)  
     assert.strictEqual(dataPoint1.blobs[5], dataPoint2.blobs[5]);
+    // Fallback session IDs should be the same within the 30-min window (blob4 = fallbackSessionId)
+    assert.strictEqual(dataPoint1.blobs[4], dataPoint2.blobs[4]);
   });
 
   test("should generate different fallback user IDs for different IPs", async () => {
@@ -137,10 +137,10 @@ describe("Analytics Service", () => {
     const dataPoint1 = mockWriteDataPoint.mock.calls[0].arguments[0];
     const dataPoint2 = mockWriteDataPoint.mock.calls[1].arguments[0];
 
-    // User IDs should be different
-    assert.notStrictEqual(dataPoint1.blobs[1], dataPoint2.blobs[1]);
-    // Fallback user IDs should be different
+    // Fallback user IDs should be different (blob5 = fallbackUserId)
     assert.notStrictEqual(dataPoint1.blobs[5], dataPoint2.blobs[5]);
+    // Fallback session IDs should also be different
+    assert.notStrictEqual(dataPoint1.blobs[4], dataPoint2.blobs[4]);
   });
 
   test("should use X-Forwarded-For when CF-Connecting-IP not available", async () => {
@@ -164,8 +164,9 @@ describe("Analytics Service", () => {
     const call = mockWriteDataPoint.mock.calls[0];
     const dataPoint = call.arguments[0];
 
-    // Should use first IP from X-Forwarded-For
+    // Should use first IP from X-Forwarded-For and generate fallback IDs
     assert.strictEqual(dataPoint.blobs[3], "fallback");
-    assert.ok(dataPoint.blobs[1].length === 16); // Should generate fallback hash
+    assert.ok(dataPoint.blobs[5].length === 16); // Should generate fallback user hash
+    assert.ok(dataPoint.blobs[4].length === 16); // Should generate fallback session hash
   });
 });
