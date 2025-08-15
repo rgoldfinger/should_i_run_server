@@ -10,3 +10,7 @@ routes = [
 [[kv_namespaces]]
 binding = "BART_CACHE"
 id = "268809e45d9d48df963ae0e982e95c12"
+
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "bart_api_analytics"

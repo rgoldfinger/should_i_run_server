@@ -15,8 +15,11 @@ const mockEnv = {
       return Promise.resolve(null);
     }),
     put: mock.fn(() => Promise.resolve()),
-  } as any
-};
+  },
+  ANALYTICS: {
+    writeDataPoint: mock.fn(() => {}),
+  }
+} as any;
 const mockCtx = {
   waitUntil: () => {},
   passThroughOnException: () => {},
@@ -190,12 +193,173 @@ describe("GET /stations Endpoint", () => {
       "application/json;charset=UTF-8"
     );
 
-    const data = await response.json();
+    const data = await response.json() as Record<string, string>;
     assert.ok(typeof data === "object");
     assert.strictEqual(data["12TH"], "12th St. Oakland City Center");
     assert.strictEqual(data["16TH"], "16th St. Mission");
     assert.strictEqual(data["19TH"], "19th St. Oakland");
     assert.strictEqual(data["ASHB"], "Ashby");
     assert.strictEqual(data["WCRK"], "Walnut Creek");
+  });
+});
+
+describe("Analytics Integration", () => {
+  test("should handle POST /bart with analytics headers", async () => {
+    // Reset the mock call count
+    mockEnv.ANALYTICS.writeDataPoint.mock.resetCalls();
+    const originalFetch = global.fetch;
+    const mockApiResponse = {
+      json: () =>
+        Promise.resolve({
+          root: {
+            station: [
+              {
+                etd: [
+                  {
+                    destination: "San Francisco",
+                    abbreviation: "SF",
+                    estimate: [
+                      {
+                        minutes: "5",
+                        platform: "2",
+                        direction: "North",
+                        length: "10",
+                        hexcolor: "#FF0000",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+    };
+    global.fetch = mock.fn(() => Promise.resolve(mockApiResponse as any));
+
+    try {
+      const location = { lat: 37.803768, lng: -122.27145 };
+      const request = new Request("http://localhost/bart", {
+        method: "POST",
+        headers: {
+          "X-User-ID": "test-user-123",
+          "X-Session-ID": "test-session-456"
+        },
+        body: JSON.stringify(location),
+      });
+
+      const response = await worker.fetch(
+        request,
+        mockEnv as any,
+        mockCtx as any
+      );
+
+      assert.strictEqual(response.status, 200);
+      // Analytics should have been called
+      assert.strictEqual(mockEnv.ANALYTICS.writeDataPoint.mock.callCount(), 1);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  test("should handle POST /directions with analytics headers", async () => {
+    // Reset the mock call count
+    mockEnv.ANALYTICS.writeDataPoint.mock.resetCalls();
+    const originalFetch = global.fetch;
+    const mockApiResponse = {
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            root: {
+              schedule: {
+                request: {
+                  trip: [
+                    {
+                      leg: [
+                        {
+                          line: "ROUTE 11",
+                          origin: "DUBL",
+                          destination: "DALY",
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          })
+        ),
+    };
+    global.fetch = mock.fn(() => Promise.resolve(mockApiResponse as any));
+
+    try {
+      const trips = [{ startCode: "DUBL", endCode: "DALY" }];
+      const request = new Request("http://localhost/directions", {
+        method: "POST",
+        headers: {
+          "X-User-ID": "test-user-789",
+          "X-Session-ID": "test-session-101"
+        },
+        body: JSON.stringify(trips),
+      });
+
+      const response = await worker.fetch(
+        request,
+        mockEnv as any,
+        mockCtx as any
+      );
+
+      assert.strictEqual(response.status, 200);
+      // Analytics should have been called
+      assert.strictEqual(mockEnv.ANALYTICS.writeDataPoint.mock.callCount(), 1);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  test("should handle GET /stations with analytics headers", async () => {
+    // Reset the mock call count
+    mockEnv.ANALYTICS.writeDataPoint.mock.resetCalls();
+    const request = new Request("http://localhost/stations", {
+      method: "GET",
+      headers: {
+        "X-User-ID": "test-user-stations",
+        "X-Session-ID": "test-session-stations"
+      }
+    });
+
+    const response = await worker.fetch(
+      request,
+      mockEnv as any,
+      mockCtx as any
+    );
+
+    assert.strictEqual(response.status, 200);
+    assert.strictEqual(
+      response.headers.get("content-type"),
+      "application/json;charset=UTF-8"
+    );
+
+    const data = await response.json() as Record<string, string>;
+    assert.ok(typeof data === "object");
+    // Analytics should have been called
+    assert.strictEqual(mockEnv.ANALYTICS.writeDataPoint.mock.callCount(), 1);
+  });
+
+  test("should handle requests without analytics headers", async () => {
+    // Reset the mock call count
+    mockEnv.ANALYTICS.writeDataPoint.mock.resetCalls();
+    const request = new Request("http://localhost/stations", {
+      method: "GET"
+    });
+
+    const response = await worker.fetch(
+      request,
+      mockEnv as any,
+      mockCtx as any
+    );
+
+    assert.strictEqual(response.status, 200);
+    // Analytics should NOT have been called
+    assert.strictEqual(mockEnv.ANALYTICS.writeDataPoint.mock.callCount(), 0);
   });
 });

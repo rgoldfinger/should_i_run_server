@@ -11,6 +11,7 @@ import { fetchDirections } from "./bartDirections.ts";
 import { type Env } from "./env.ts";
 import { fetchBart } from "./fetchBart.ts";
 import { fetchStationNames } from "./stationNames.ts";
+import { serveStatsPage, fetchAnalyticsData } from "./stats.ts";
 
 export default {
   async fetch(
@@ -27,6 +28,10 @@ export default {
     } else if (request.method === "GET") {
       if (request.url.endsWith("/stations")) {
         return fetchStationNames(request, env, ctx);
+      } else if (request.url.endsWith("/admin/stats")) {
+        return serveStatsPage();
+      } else if (request.url.includes("/admin/api/analytics")) {
+        return fetchAnalyticsData(request, env);
       }
     }
     return new Response("404", { status: 404 });

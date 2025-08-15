@@ -1,5 +1,6 @@
 import { type Env } from "./env.ts";
 import { getStations } from "./bartApi.ts";
+import { sendAnalytics, extractAnalyticsFromHeaders } from "./analytics.ts";
 
 export type Location = { lat: number; lng: number };
 
@@ -93,7 +94,7 @@ export async function getDeparturesForStation(
 ): Promise<Station> {
   const url = `http://api.bart.gov/api/etd.aspx?cmd=etd&orig=${station.abbr}&key=MW9S-E7SL-26DU-VV8V&json=y`;
   const response = await fetch(url);
-  const responseJSON = await response.json();
+  const responseJSON = await response.json() as BartETDResponse;
 
   const etds: RawETDS[] = responseJSON.root.station[0].etd;
   const lines: Line[] = etds.map((e): Line => {
@@ -124,6 +125,12 @@ export async function fetchBart(
   ctx: ExecutionContext
 ): Promise<Response> {
   const location: Location = JSON.parse(await request.text());
+  
+  const analytics = extractAnalyticsFromHeaders(request);
+  if (analytics) {
+    ctx.waitUntil(sendAnalytics(env, "/bart", analytics));
+  }
+  
   const closestStations = await getClosestStations(location, env);
   const stationsWithDeparturetimes = await Promise.all(
     closestStations.map(getDeparturesForStation)

@@ -12,12 +12,16 @@ const mockEnv: Env = {
   BART_CACHE: {
     get: mock.fn(() => Promise.resolve(null)), // Always cache miss to force fresh API calls
     put: mock.fn(() => Promise.resolve()),
-  } as any
-};
+  },
+  ANALYTICS: {
+    writeDataPoint: mock.fn(() => {}),
+  }
+} as any;
 
 const mockContext: ExecutionContext = {
   waitUntil: () => {},
   passThroughOnException: () => {},
+  props: {},
 };
 
 async function compareResponses(endpoint: string, body: any): Promise<void> {

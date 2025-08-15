@@ -8,8 +8,11 @@ const mockEnv = {
   BART_CACHE: {
     get: mock.fn(() => Promise.resolve(JSON.stringify(testRoutes))),
     put: mock.fn(() => Promise.resolve()),
-  } as any,
-};
+  },
+  ANALYTICS: {
+    writeDataPoint: mock.fn(() => {}),
+  }
+} as any;
 
 describe("Trip Planning API Integration", () => {
   test("should handle successful API response with route enrichment", async () => {

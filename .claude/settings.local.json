@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run test:*)",
+      "Bash(npm run typecheck:*)",
+      "WebFetch(domain:developers.cloudflare.com)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -8,8 +8,11 @@ const mockEnv = {
   BART_CACHE: {
     get: mock.fn(() => Promise.resolve(JSON.stringify(testStations))),
     put: mock.fn(() => Promise.resolve()),
-  } as any
-};
+  },
+  ANALYTICS: {
+    writeDataPoint: mock.fn(() => {}),
+  }
+} as any;
 
 describe('Distance Calculation & Station Filtering', () => {
   test('should calculate distance between two coordinates', () => {
@@ -38,7 +41,7 @@ describe('Distance Calculation & Station Filtering', () => {
     const userLocation: Location = { lat: 37.803768, lng: -122.27145 }; // Near 12TH station
     const closest = await getClosestStations(userLocation, mockEnv);
     
-    assert.strictEqual(closest[0].abbr, '12TH');
-    assert.ok(closest[0].distance < closest[1].distance);
+    assert.strictEqual(closest[0]?.abbr, '12TH');
+    assert.ok(closest[0]?.distance! < closest[1]?.distance!);
   });
 });
