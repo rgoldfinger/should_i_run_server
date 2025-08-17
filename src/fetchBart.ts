@@ -1,6 +1,7 @@
 import { type Env } from "./env.ts";
 import { getStations } from "./bartApi.ts";
 import { sendAnalytics } from "./analytics.ts";
+import { getCanonicalAbbr } from "./bartAbbr.ts";
 
 export type Location = { lat: number; lng: number };
 
@@ -84,7 +85,7 @@ interface RawETDS {
 interface BartETDResponse {
   root: {
     station: Array<{
-      etd: RawETDS[];
+      etd?: RawETDS[];
     }>;
   };
 }
@@ -96,10 +97,10 @@ export async function getDeparturesForStation(
   const response = await fetch(url);
   const responseJSON = (await response.json()) as BartETDResponse;
 
-  const etds: RawETDS[] = responseJSON.root.station[0].etd;
-  const lines: Line[] = etds.map((e): Line => {
+  const etds = responseJSON.root.station[0].etd;
+  const lines: Line[] | undefined = etds?.map((e): Line => {
     return {
-      abbreviation: e.abbreviation,
+      abbreviation: getCanonicalAbbr(e.abbreviation),
       destination: e.destination,
       estimates: e.estimate.map((est) => ({
         direction: est.direction,
@@ -115,7 +116,7 @@ export async function getDeparturesForStation(
   });
   return {
     ...station,
-    lines,
+    lines: lines || [],
   };
 }
 

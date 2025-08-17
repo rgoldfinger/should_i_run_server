@@ -257,7 +257,15 @@ export function serveStatsPage(): Response {
 
         // Update chart with new data
         function updateChart(data) {
-            chart.data.labels = data.timePeriods;
+            chart.data.labels = data.timePeriods.map(period => 
+                new Date(period).toLocaleString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                })
+            );
             chart.data.datasets[0].data = data.uniqueSessions;
             chart.data.datasets[1].data = data.uniqueUsers;
             chart.data.datasets[2].data = data.requests;
@@ -457,7 +465,7 @@ export async function fetchAnalyticsData(request: Request, env: Env): Promise<Re
           users = fallbackUsers;
         }
         
-        timePeriods.push(new Date(period).toLocaleString());
+        timePeriods.push(period);
         uniqueSessions.push(sessions);
         uniqueUsers.push(users);
         requests.push(reqs);
