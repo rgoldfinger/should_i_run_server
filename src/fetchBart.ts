@@ -98,9 +98,11 @@ export async function getDeparturesForStation(
   const responseJSON = (await response.json()) as BartETDResponse;
 
   const etds = responseJSON.root.station[0].etd;
+  // console.log(etds);
   const lines: Line[] | undefined = etds?.map((e): Line => {
     return {
-      abbreviation: getCanonicalAbbr(e.abbreviation),
+      abbreviation: e.abbreviation,
+      //       abbreviation: getCanonicalAbbr(e.abbreviation),
       destination: e.destination,
       estimates: e.estimate.map((est) => ({
         direction: est.direction,
@@ -134,6 +136,7 @@ export async function fetchBart(
     closestStations.map(getDeparturesForStation)
   );
   const data: Station[] = stationsWithDeparturetimes;
+  // console.log(data[1]);
   return new Response(JSON.stringify(data), {
     status: 200,
     headers: {
