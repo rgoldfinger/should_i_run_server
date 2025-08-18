@@ -319,224 +319,164 @@ export function serveStatsPage(): Response {
     </script>
 </body>
 </html>`;
-  
+
   return new Response(html, {
-    headers: { 'Content-Type': 'text/html' }
+    headers: { "Content-Type": "text/html" },
   });
 }
 
-export async function fetchAnalyticsData(request: Request, env: Env): Promise<Response> {
+export async function fetchAnalyticsData(
+  request: Request,
+  env: Env
+): Promise<Response> {
   const url = new URL(request.url);
-  const days = parseInt(url.searchParams.get('days') || '1');
-  const identification = url.searchParams.get('identification') || 'fallback';
-  
-  // Check if required environment variables are set
+  const days = parseInt(url.searchParams.get("days") || "1");
+  const identification = url.searchParams.get("identification") || "fallback";
+
   if (!env.CLOUDFLARE_ACCOUNT_ID || !env.CLOUDFLARE_API_TOKEN) {
-    return new Response(JSON.stringify({ 
-      error: 'Missing required environment variables',
-      message: 'CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must be set'
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return new Response(
+      JSON.stringify({
+        error: "Missing required environment variables",
+        message: "CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must be set",
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
-  
+
   try {
-    // First, let's check if we have ANY data at all
-    const debugQuery = `SELECT COUNT(*) as total_rows FROM bart_api_analytics`;
-    console.log('Debug query - checking total rows:', debugQuery);
-    
-    const debugResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
-        'Content-Type': 'application/sql',
-      },
-      body: debugQuery
-    });
+    let interval = "HOUR";
+    if (days > 7) interval = "DAY";
+    if (days > 90) interval = "WEEK";
 
-    if (debugResponse.ok) {
-      const debugResult = await debugResponse.json() as { data?: any[] };
-      console.log('Total rows in dataset:', JSON.stringify(debugResult, null, 2));
+    let query: string;
+    let totalQuery: string;
+
+    if (identification === "explicit") {
+      query = `SELECT
+          toStartOfInterval(toDateTime(double1), INTERVAL '1' ${interval}) as period,
+          COUNT(DISTINCT blob3) as sessions,
+          COUNT(DISTINCT blob2) as users,
+          SUM(_sample_interval) as requests
+        FROM bart_api_analytics
+        WHERE toDateTime(double1) > NOW() - INTERVAL '${days}' DAY AND blob4 = 'explicit'
+        GROUP BY period
+        ORDER BY period ASC`;
+
+      totalQuery = `SELECT
+          COUNT(DISTINCT blob3) as sessions_total,
+          COUNT(DISTINCT blob2) as users_total,
+          SUM(_sample_interval) as requests_total
+        FROM bart_api_analytics
+        WHERE toDateTime(double1) > NOW() - INTERVAL '${days}' DAY AND blob4 = 'explicit'`;
+    } else {
+      query = `SELECT
+          toStartOfInterval(toDateTime(double1), INTERVAL '1' ${interval}) as period,
+          COUNT(DISTINCT blob5) as sessions,
+          COUNT(DISTINCT blob6) as users,
+          SUM(_sample_interval) as requests
+        FROM bart_api_analytics
+        WHERE toDateTime(double1) > NOW() - INTERVAL '${days}' DAY
+        GROUP BY period
+        ORDER BY period ASC`;
+
+      totalQuery = `SELECT
+          COUNT(DISTINCT blob5) as sessions_total,
+          COUNT(DISTINCT blob6) as users_total,
+          SUM(_sample_interval) as requests_total
+        FROM bart_api_analytics
+        WHERE toDateTime(double1) > NOW() - INTERVAL '${days}' DAY`;
     }
 
-    // Check recent data structure using our timestamp in double1
-    const sampleQuery = `SELECT blob1, blob2, blob3, blob4, blob5, blob6, double1, _sample_interval FROM bart_api_analytics ORDER BY double1 DESC LIMIT 5`;
-    console.log('Sample query:', sampleQuery);
-    
-    const sampleResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
-        'Content-Type': 'application/sql',
-      },
-      body: sampleQuery
-    });
+    const [response, totalResponse] = await Promise.all([
+      fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
+            "Content-Type": "application/sql",
+          },
+          body: query,
+        }
+      ),
+      fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
+            "Content-Type": "application/sql",
+          },
+          body: totalQuery,
+        }
+      ),
+    ]);
 
-    if (sampleResponse.ok) {
-      const sampleResult = await sampleResponse.json() as { data?: any[] };
-      console.log('Sample data structure:', JSON.stringify(sampleResult, null, 2));
+    if (!response.ok || !totalResponse.ok) {
+      const errorText = !response.ok
+        ? await response.text()
+        : await totalResponse.text();
+      throw new Error(`Analytics API error: ${errorText}`);
     }
 
-    // Try querying recent data from the last few hours using our timestamp
-    const recentQuery = `SELECT COUNT(*) as recent_count FROM bart_api_analytics WHERE toDateTime(double1) > NOW() - INTERVAL '6' HOUR`;
-    console.log('Recent data query:', recentQuery);
-    
-    const recentResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
-        'Content-Type': 'application/sql',
-      },
-      body: recentQuery
-    });
+    const result = (await response.json()) as { data?: any[] };
+    const totalResult = (await totalResponse.json()) as { data?: any[] };
 
-    if (recentResponse.ok) {
-      const recentResult = await recentResponse.json() as { data?: any[] };
-      console.log('Recent data count:', JSON.stringify(recentResult, null, 2));
-    }
-
-    // Determine interval based on time range
-    let interval = 'HOUR';
-    if (days > 7) interval = 'DAY';
-    if (days > 90) interval = 'WEEK';
-    
-    
-    // Query Cloudflare Analytics Engine with time grouping - get all metrics in one query
-    const query = `SELECT 
-        toStartOfInterval(toDateTime(double1), INTERVAL '1' ${interval}) as period,
-        COUNT(DISTINCT blob3) as explicit_sessions,    -- explicit session IDs
-        COUNT(DISTINCT blob2) as explicit_users,       -- explicit user IDs  
-        COUNT(DISTINCT blob5) as fallback_sessions,    -- fallback session IDs
-        COUNT(DISTINCT blob6) as fallback_users,       -- fallback user IDs
-        SUM(_sample_interval) as total_requests
-      FROM bart_api_analytics
-      WHERE toDateTime(double1) > NOW() - INTERVAL '${days}' DAY
-      GROUP BY period
-      ORDER BY period ASC`;
-
-    console.log('Executing main query:', query);
-    
-    const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
-        'Content-Type': 'application/sql',
-      },
-      body: query
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Analytics API error response:', errorText);
-      throw new Error(`Analytics API error: ${response.status} - ${errorText}`);
-    }
-
-    const result = await response.json() as { data?: any[] };
-    
-    console.log('Analytics API result:', JSON.stringify(result, null, 2));
-    
-    // Process the data for the frontend
     const timePeriods: string[] = [];
     const uniqueSessions: number[] = [];
     const uniqueUsers: number[] = [];
     const requests: number[] = [];
-    
+
     let totalSessions = 0;
     let totalUsers = 0;
     let totalRequests = 0;
 
-    if (result.data && result.data.length > 0) {
+    if (result.data) {
       result.data.forEach((row: any) => {
-        const period = row.period;
-        const explicitSessions = parseInt(row.explicit_sessions);
-        const explicitUsers = parseInt(row.explicit_users);
-        const fallbackSessions = parseInt(row.fallback_sessions);
-        const fallbackUsers = parseInt(row.fallback_users);
-        const reqs = parseInt(row.total_requests);
-        
-        // Apply identification filter logic
-        let sessions, users;
-        if (identification === 'explicit') {
-          sessions = explicitSessions;
-          users = explicitUsers;
-        } else { // 'fallback' - represents total count since fallback is always generated
-          sessions = fallbackSessions; 
-          users = fallbackUsers;
-        }
-        
-        timePeriods.push(period);
-        uniqueSessions.push(sessions);
-        uniqueUsers.push(users);
-        requests.push(reqs);
-        
-        totalRequests += reqs;
+        timePeriods.push(row.period);
+        uniqueSessions.push(parseInt(row.sessions));
+        uniqueUsers.push(parseInt(row.users));
+        requests.push(parseInt(row.requests));
       });
-
-      // For totals, use the same approach - get all metrics in one query
-      const totalQuery = `SELECT 
-          COUNT(DISTINCT blob3) as explicit_sessions_total,
-          COUNT(DISTINCT blob2) as explicit_users_total,
-          COUNT(DISTINCT blob5) as fallback_sessions_total,
-          COUNT(DISTINCT blob6) as fallback_users_total,
-          SUM(_sample_interval) as total_requests
-        FROM bart_api_analytics
-        WHERE toDateTime(double1) > NOW() - INTERVAL '${days}' DAY`;
-
-      const totalResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
-          'Content-Type': 'application/sql',
-        },
-        body: totalQuery
-      });
-
-      if (totalResponse.ok) {
-        const totalResult = await totalResponse.json() as { data?: any[] };
-        if (totalResult.data && totalResult.data.length > 0) {
-          const row = totalResult.data[0];
-          const explicitSessionsTotal = parseInt(row.explicit_sessions_total);
-          const explicitUsersTotal = parseInt(row.explicit_users_total);
-          const fallbackSessionsTotal = parseInt(row.fallback_sessions_total);
-          const fallbackUsersTotal = parseInt(row.fallback_users_total);
-          const totalReqs = parseInt(row.total_requests);
-          
-          // Apply identification filter logic to totals
-          if (identification === 'explicit') {
-            totalSessions = explicitSessionsTotal;
-            totalUsers = explicitUsersTotal;
-          } else { // 'fallback' - represents total count since fallback is always generated
-            totalSessions = fallbackSessionsTotal;
-            totalUsers = fallbackUsersTotal;
-          }
-          totalRequests = totalReqs;
-        }
-      }
     }
 
-    return new Response(JSON.stringify({
-      timePeriods,
-      uniqueSessions,
-      uniqueUsers,
-      requests,
-      totals: {
-        uniqueSessions: totalSessions,
-        uniqueUsers: totalUsers,
-        requests: totalRequests
+    if (totalResult.data && totalResult.data.length > 0) {
+      const row = totalResult.data[0];
+      totalSessions = parseInt(row.sessions_total);
+      totalUsers = parseInt(row.users_total);
+      totalRequests = parseInt(row.requests_total);
+    }
+
+    return new Response(
+      JSON.stringify({
+        timePeriods,
+        uniqueSessions,
+        uniqueUsers,
+        requests,
+        totals: {
+          uniqueSessions: totalSessions,
+          uniqueUsers: totalUsers,
+          requests: totalRequests,
+        },
+      }),
+      {
+        headers: { "Content-Type": "application/json" },
       }
-    }), {
-      headers: { 'Content-Type': 'application/json' }
-    });
-    
+    );
   } catch (error) {
-    console.error('Analytics fetch error:', error);
-    return new Response(JSON.stringify({ 
-      error: 'Failed to fetch analytics data',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    console.error("Analytics fetch error:", error);
+    return new Response(
+      JSON.stringify({
+        error: "Failed to fetch analytics data",
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 }
