@@ -252,7 +252,8 @@ export function serveStatsPage(): Response {
                             borderColor: '#7c3aed',
                             backgroundColor: 'rgba(124, 58, 237, 0.1)',
                             tension: 0.1,
-                            borderDash: [5, 5]
+                            borderDash: [5, 5],
+                            yAxisID: 'y'
                         },
                         {
                             label: '% Implicit-only IDs',
@@ -260,7 +261,16 @@ export function serveStatsPage(): Response {
                             borderColor: '#f59e0b',
                             backgroundColor: 'rgba(245, 158, 11, 0.1)',
                             tension: 0.1,
-                            borderDash: [5, 5]
+                            borderDash: [5, 5],
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Total Users',
+                            data: [],
+                            borderColor: '#059669',
+                            backgroundColor: 'rgba(5, 150, 105, 0.1)',
+                            tension: 0.1,
+                            yAxisID: 'y1'
                         }
                     ]
                 },
@@ -269,6 +279,9 @@ export function serveStatsPage(): Response {
                     maintainAspectRatio: false,
                     scales: {
                         y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
                             beginAtZero: true,
                             max: 100,
                             ticks: {
@@ -276,6 +289,20 @@ export function serveStatsPage(): Response {
                                     return value + '%';
                                 }
                             }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString();
+                                }
+                            },
+                            grid: {
+                                drawOnChartArea: false,
+                            },
                         }
                     },
                     plugins: {
@@ -332,6 +359,7 @@ export function serveStatsPage(): Response {
             percentageChart.data.labels = formattedLabels;
             percentageChart.data.datasets[0].data = data.explicitPercentage;
             percentageChart.data.datasets[1].data = data.implicitOnlyPercentage;
+            percentageChart.data.datasets[2].data = data.uniqueUsers;
             percentageChart.update();
         }
 
