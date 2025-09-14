@@ -171,6 +171,11 @@ export function serveStatsPage(): Response {
         <canvas id="analyticsChart" width="400" height="200"></canvas>
     </div>
 
+    <div class="chart-container" style="height: 200px; margin-top: 20px;">
+        <h3 style="margin-bottom: 15px; color: #374151;">User ID Type Distribution (%)</h3>
+        <canvas id="percentageChart" width="400" height="150"></canvas>
+    </div>
+
     <div id="loading" class="loading" style="display: none;">
         Loading analytics data...
     </div>
@@ -179,10 +184,11 @@ export function serveStatsPage(): Response {
 
     <script>
         let chart;
+        let percentageChart;
         let currentTimeRange = 1;
         let currentIdentification = 'fallback';
 
-        // Initialize chart
+        // Initialize main chart
         function initChart() {
             const ctx = document.getElementById('analyticsChart').getContext('2d');
             chart = new Chart(ctx, {
@@ -232,6 +238,55 @@ export function serveStatsPage(): Response {
             });
         }
 
+        // Initialize percentage chart
+        function initPercentageChart() {
+            const ctx = document.getElementById('percentageChart').getContext('2d');
+            percentageChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: '% Explicit IDs',
+                            data: [],
+                            borderColor: '#7c3aed',
+                            backgroundColor: 'rgba(124, 58, 237, 0.1)',
+                            tension: 0.1,
+                            borderDash: [5, 5]
+                        },
+                        {
+                            label: '% Implicit-only IDs',
+                            data: [],
+                            borderColor: '#f59e0b',
+                            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                            tension: 0.1,
+                            borderDash: [5, 5]
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true
+                        }
+                    }
+                }
+            });
+        }
+
         // Load analytics data
         async function loadAnalytics(days = 1, identification = 'both') {
             document.getElementById('loading').style.display = 'block';
@@ -257,7 +312,7 @@ export function serveStatsPage(): Response {
 
         // Update chart with new data
         function updateChart(data) {
-            chart.data.labels = data.timePeriods.map(period => 
+            const formattedLabels = data.timePeriods.map(period =>
                 new Date(period).toLocaleString('en-US', {
                     year: 'numeric',
                     month: 'short',
@@ -266,10 +321,18 @@ export function serveStatsPage(): Response {
                     minute: '2-digit'
                 })
             );
+
+            chart.data.labels = formattedLabels;
             chart.data.datasets[0].data = data.uniqueSessions;
             chart.data.datasets[1].data = data.uniqueUsers;
             chart.data.datasets[2].data = data.requests;
             chart.update();
+
+            // Update percentage chart
+            percentageChart.data.labels = formattedLabels;
+            percentageChart.data.datasets[0].data = data.explicitPercentage;
+            percentageChart.data.datasets[1].data = data.implicitOnlyPercentage;
+            percentageChart.update();
         }
 
         // Update metric cards
@@ -282,6 +345,7 @@ export function serveStatsPage(): Response {
         // Event listeners
         document.addEventListener('DOMContentLoaded', function() {
             initChart();
+            initPercentageChart();
             loadAnalytics(currentTimeRange, currentIdentification);
 
             // Time range buttons
@@ -390,7 +454,29 @@ export async function fetchAnalyticsData(
         WHERE toDateTime(double1) > NOW() - INTERVAL '${days}' DAY`;
     }
 
-    const [response, totalResponse] = await Promise.all([
+    // Always fetch both explicit and total data for percentage calculations
+    const explicitQuery = `SELECT
+        toStartOfInterval(toDateTime(double1), INTERVAL '1' ${interval}) as period,
+        COUNT(DISTINCT blob3) as sessions,
+        COUNT(DISTINCT blob2) as users,
+        SUM(_sample_interval) as requests
+      FROM bart_api_analytics
+      WHERE toDateTime(double1) > NOW() - INTERVAL '${days}' DAY AND blob4 = 'explicit'
+      GROUP BY period
+      ORDER BY period ASC`;
+
+    const allDataQuery = `SELECT
+        toStartOfInterval(toDateTime(double1), INTERVAL '1' ${interval}) as period,
+        COUNT(DISTINCT blob5) as sessions,
+        COUNT(DISTINCT blob6) as users,
+        SUM(_sample_interval) as requests
+      FROM bart_api_analytics
+      WHERE toDateTime(double1) > NOW() - INTERVAL '${days}' DAY
+      GROUP BY period
+      ORDER BY period ASC`;
+
+
+    const [response, totalResponse, explicitResponse, allDataResponse] = await Promise.all([
       fetch(
         `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`,
         {
@@ -413,22 +499,52 @@ export async function fetchAnalyticsData(
           body: totalQuery,
         }
       ),
+      fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
+            "Content-Type": "application/sql",
+          },
+          body: explicitQuery,
+        }
+      ),
+      fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
+            "Content-Type": "application/sql",
+          },
+          body: allDataQuery,
+        }
+      ),
     ]);
 
-    if (!response.ok || !totalResponse.ok) {
+    if (!response.ok || !totalResponse.ok || !explicitResponse.ok || !allDataResponse.ok) {
       const errorText = !response.ok
         ? await response.text()
-        : await totalResponse.text();
+        : !totalResponse.ok
+        ? await totalResponse.text()
+        : !explicitResponse.ok
+        ? await explicitResponse.text()
+        : await allDataResponse.text();
       throw new Error(`Analytics API error: ${errorText}`);
     }
 
     const result = (await response.json()) as { data?: any[] };
     const totalResult = (await totalResponse.json()) as { data?: any[] };
+    const explicitResult = (await explicitResponse.json()) as { data?: any[] };
+    const allDataResult = (await allDataResponse.json()) as { data?: any[] };
 
     const timePeriods: string[] = [];
     const uniqueSessions: number[] = [];
     const uniqueUsers: number[] = [];
     const requests: number[] = [];
+    const explicitPercentage: number[] = [];
+    const implicitOnlyPercentage: number[] = [];
 
     let totalSessions = 0;
     let totalUsers = 0;
@@ -450,12 +566,48 @@ export async function fetchAnalyticsData(
       totalRequests = parseInt(row.requests_total);
     }
 
+    // Calculate percentages for each time period
+    const explicitData = new Map();
+    const allData = new Map();
+
+    if (explicitResult.data) {
+      explicitResult.data.forEach((row: any) => {
+        explicitData.set(row.period, {
+          sessions: parseInt(row.sessions),
+          users: parseInt(row.users),
+        });
+      });
+    }
+
+    if (allDataResult.data) {
+      allDataResult.data.forEach((row: any) => {
+        allData.set(row.period, {
+          sessions: parseInt(row.sessions),
+          users: parseInt(row.users),
+        });
+      });
+    }
+
+    // Calculate percentages based on user counts
+    timePeriods.forEach((period) => {
+      const explicit = explicitData.get(period) || { users: 0 };
+      const total = allData.get(period) || { users: 0 };
+
+      const explicitPct = total.users > 0 ? (explicit.users / total.users) * 100 : 0;
+      const implicitOnlyPct = 100 - explicitPct;
+
+      explicitPercentage.push(Math.round(explicitPct * 100) / 100);
+      implicitOnlyPercentage.push(Math.round(implicitOnlyPct * 100) / 100);
+    });
+
     return new Response(
       JSON.stringify({
         timePeriods,
         uniqueSessions,
         uniqueUsers,
         requests,
+        explicitPercentage,
+        implicitOnlyPercentage,
         totals: {
           uniqueSessions: totalSessions,
           uniqueUsers: totalUsers,
